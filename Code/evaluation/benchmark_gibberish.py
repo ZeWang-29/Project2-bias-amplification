@@ -1,102 +1,92 @@
-#Gibberish Code
+"""
+Compute the Text Quality Index using the Gibberish Detector.
+
+Each sentence is classified as Noise (0), Word Salad (1), Mild Gibberish (2),
+or Clean (3). The article-level score is the average across all sentences.
+
+Paper reference: Section 3.5 (Generation Quality Metric)
+"""
 
 import torch
 import pandas as pd
-from transformers import pipeline
-import matplotlib.pyplot as plt
 from transformers import pipeline, AutoTokenizer
 
+# ============================================================
+# Configuration
+# ============================================================
+GIBBERISH_MODEL = "madhurjindal/autonlp-Gibberish-Detector-492513457"
+GENERATION_PATHS = {
+    # Map generation index to file path. Adjust paths to your environment.
+    # 1: "synthetic_data/DD1.txt",
+    # 2: "synthetic_data/DD2.txt",
+    # ...
+}
+START_GEN = 0
+END_GEN = 11
+OUTPUT_CSV = "gibberish_levels.csv"
+
+# ============================================================
+# Helper functions
+# ============================================================
 def read_articles_from_text(file_path):
+    """Parse articles from text file."""
     articles = []
     current_article = []
-    
-    try:
-        # Open the file in read mode with UTF-8 encoding
-        with open(file_path, 'r', encoding='utf-8') as file:
-            for line in file:
-                # If the line starts with '"title:', it indicates the start of a new article
-                if line.strip().startswith('"title:'):
-                    # If there's an existing article, append it to the articles list
-                    if current_article:
-                        article_body = ''.join(current_article).strip()  # Combine the lines into one article body
-                        articles.append({'body': article_body, 'formatted': article_body})
-                        current_article = []  # Reset for the next article
-
-                # Add the line to the current article (even if it's the title line, we add everything)
-                current_article.append(line)
-            
-            # Append the last article in case the file doesn't end with a new "title:" line
-            if current_article:
-                article_body = ''.join(current_article).strip()
-                articles.append({'body': article_body, 'formatted': article_body})
-                
-    except FileNotFoundError:
-        print("File not found. Please check the file path.")
-    except UnicodeDecodeError as ude:
-        print(f"Encoding error: {ude}. Try using a different encoding.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
+    with open(file_path, "r", encoding="utf-8") as file:
+        for line in file:
+            if line.strip().startswith('"title:'):
+                if current_article:
+                    article_body = "".join(current_article).strip()
+                    articles.append({"body": article_body})
+                    current_article = []
+            current_article.append(line)
+        if current_article:
+            article_body = "".join(current_article).strip()
+            articles.append({"body": article_body})
     return articles
 
-# Function to compute gibberish levels for entire articles
-def compute_gibberish_levels(texts, model_name="madhurjindal/autonlp-Gibberish-Detector-492513457", max_length=512):
-    classifier = pipeline("text-classification", model=model_name, top_k=4, device=0)  # Use GPU if available
+
+def compute_gibberish_levels(texts, model_name=GIBBERISH_MODEL, max_length=512):
+    """Compute per-article Text Quality Index."""
+    classifier = pipeline("text-classification", model=model_name, top_k=4, device=0)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    label_map = {
-        'noise': 0,
-        'word salad': 1,
-        'mild gibberish': 2,
-        'clean': 3
-    }
+    label_map = {"noise": 0, "word salad": 1, "mild gibberish": 2, "clean": 3}
+
     gibberish_levels = []
-    total_articles = len(texts)
-    for index, text in enumerate(texts):
-        sentences = text['body'].split('.')
-        sentences = [sentence.strip() for sentence in sentences if sentence.strip()]
+    for text in texts:
+        sentences = [s.strip() for s in text["body"].split(".") if s.strip()]
         article_levels = []
         for sentence in sentences:
-            # Tokenize the sentence and truncate if it's longer than max_length
             inputs = tokenizer(sentence, truncation=True, max_length=max_length, return_tensors="pt")
-            # Move tensors to the appropriate device
             inputs = {key: value.to(classifier.device) for key, value in inputs.items()}
-            # Disable gradient computation
             with torch.no_grad():
                 outputs = classifier.model(**inputs)
                 logits = outputs.logits
                 scores = logits.softmax(dim=-1)
-                results = [{'label': classifier.model.config.id2label[label.item()], 'score': score.item()} for label, score in zip(logits.argmax(dim=-1), scores.max(dim=-1))]
-            # Compute expected gibberish level
-            expected_level = sum([label_map[res['label']] * res['score'] for res in results])
+                results = [
+                    {"label": classifier.model.config.id2label[label.item()], "score": score.item()}
+                    for label, score in zip(logits.argmax(dim=-1), scores.max(dim=-1))
+                ]
+            expected_level = sum(label_map[res["label"]] * res["score"] for res in results)
             article_levels.append(expected_level)
-        # Calculate the average gibberish level for the article
-        if article_levels:
-            average_level = sum(article_levels) / len(article_levels)
-        else:
-            average_level = 0  # Default to 0 if no sentences
-        gibberish_levels.append(average_level)
+        avg_level = sum(article_levels) / len(article_levels) if article_levels else 0
+        gibberish_levels.append(avg_level)
     return gibberish_levels
 
-# Initialize the results DataFrame
-results = pd.DataFrame(columns=['Generation', 'GibberishLevel'])
 
-for i in range(0, 12):  # Assuming 8 generations
-    path = f'/kaggle/input/dataset-2-center/DP{i}.txt'
+# ============================================================
+# Main loop
+# ============================================================
+results = pd.DataFrame(columns=["Generation", "GibberishLevel"])
+
+for i in range(START_GEN, END_GEN + 1):
+    path = GENERATION_PATHS.get(i, f"synthetic_data/DD{i}.txt")
     articles = read_articles_from_text(path)
     print(f"Generation {i}: {len(articles)} articles")
-    unique_articles = {article['body'] for article in articles}
-    print(f"Original count: {len(articles)}, Unique count: {len(unique_articles)}")
     gibberish_levels = compute_gibberish_levels(articles)
-    gen_results = pd.DataFrame({
-        'Generation': [i] * len(gibberish_levels),
-        'GibberishLevel': gibberish_levels
-    })
+
+    gen_results = pd.DataFrame({"Generation": [i] * len(gibberish_levels), "GibberishLevel": gibberish_levels})
     results = pd.concat([results, gen_results], ignore_index=True)
 
-# Save results to CSV
-results.to_csv('gibberish_levels.csv', index=False)
-
-# Group results by Generation and compute statistics
-grouped_results = results.groupby('Generation')['GibberishLevel']
-mean_levels = grouped_results.mean()
-std_levels = grouped_results.std()
+results.to_csv(OUTPUT_CSV, index=False)
+print(f"Saved gibberish levels to {OUTPUT_CSV}")

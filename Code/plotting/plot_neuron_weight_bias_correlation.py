@@ -1,34 +1,42 @@
+"""
+Figure 4a: Scatter plot of Pearson correlations between neuron weights and bias performance.
+
+For Figure 4b (neuron weights vs. Text Quality Index), use the corresponding
+Text Quality Index correlation CSV as input.
+
+Paper reference: Section 4.4, Figure 4
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
-plt.rcParams.update({'font.size': 15})
+plt.rcParams.update({"font.size": 15})
 
-# Load the optimized correlation data from CSV file
-correlation_df = pd.read_csv("/kaggle/working/neuron_weight_bias_correlation_newey_west.csv")
+# ============================================================
+# Configuration
+# ============================================================
+INPUT_CSV = "../Data/Mechanistic_Interpretation/Pearson Correlation Between Neuron Weight and Bias Performance.csv"
+# For Figure 4b, use:
+# INPUT_CSV = "../Data/Mechanistic_Interpretation/Pearson Correlation Between Neuron Weight and Text Quality Index.csv"
+OUTPUT_FILE = "neuron_weight_bias_correlation.png"
 
-# Report neurons with correlation >= 0.80 or <= -0.80
-significant_neurons = correlation_df[(correlation_df["pearson_correlation"] >= 0.80) | (correlation_df["pearson_correlation"] <= -0.80)]
-significant_neurons.to_csv("significant_neurons.csv", index=False)
-print("Significant neurons saved to significant_neurons.csv")
+# ============================================================
+# Plot
+# ============================================================
+correlation_df = pd.read_csv(INPUT_CSV)
 
-# Plot scatter plots of correlations for each layer
 plt.figure(figsize=(15, 10))
 
-# Sort and iterate over unique layers
-unique_layers = sorted(correlation_df["layer"].unique())
-for layer in unique_layers:
-    # Filter data for the current layer
+for layer in sorted(correlation_df["layer"].unique()):
     layer_data = correlation_df[correlation_df["layer"] == layer]
-    
-    # Scatter plot of neuron_id vs pearson_correlation for the current layer
-    plt.scatter(layer_data["neuron_id"], layer_data["pearson_correlation"], label=f'Layer {layer}', alpha=0.5)
+    plt.scatter(layer_data["neuron_id"], layer_data["pearson_correlation"],
+                label=f"Layer {layer}", alpha=0.5)
 
-# Plot settings
 plt.xlabel("Neuron ID")
 plt.ylabel("Correlation Level")
 plt.title("Pearson Correlation Between Neuron Weight and Bias Performance")
-plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+plt.grid(True, linestyle="--", alpha=0.6)
 plt.tight_layout()
-plt.savefig("weight_scatter_pearson_correlations.png", bbox_inches='tight', dpi=300)
+plt.savefig(OUTPUT_FILE, bbox_inches="tight", dpi=300)
 plt.show()

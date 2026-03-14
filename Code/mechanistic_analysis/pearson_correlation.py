@@ -1,34 +1,47 @@
+"""
+Compute Pearson correlation between neuron activations and model bias
+across all fine-tuned GPT-2 versions.
+
+Paper reference: Section 3.6, Section 4.4 (Mechanistic Interpretation)
+"""
+
 import pandas as pd
 from scipy.stats import pearsonr
 
-# Load the neuron activation data from six CSV files and concatenate them into one DataFrame
-csv_files = ['/kaggle/input/neurons-correlation/MMA_activations.csv', '/kaggle/input/neurons-correlation/MMB_activations.csv', '/kaggle/input/neurons-correlation/MMN_activations.csv', '/kaggle/input/neurons-correlation/MMO_activations.csv', '/kaggle/input/neurons-correlation/MMP_activations.csv', '/kaggle/input/neurons-correlation/MM_activations.csv']
-activation_data = pd.concat([pd.read_csv(file) for file in csv_files], ignore_index=True)
+# ============================================================
+# Configuration
+# ============================================================
+ACTIVATION_CSV_FILES = [
+    # Activation CSVs for each experimental setup (from extract_activations.py)
+    "MM_activations.csv",
+    "MMA_activations.csv",
+    "MMP_activations.csv",
+    "MMO_activations.csv",
+    # "MMB_activations.csv",    # Optional: Beam Search (not in paper)
+    # "MMN_activations.csv",    # Optional: Nucleus Sampling (not in paper)
+]
+BIAS_CSV = "ModelBias.csv"                  # Model bias data (model_name, bias)
+OUTPUT_CSV = "neuron_bias_correlation.csv"
 
-# Load the model bias data
-bias_data = pd.read_csv('/kaggle/input/newnewnewbias/ModelBias.csv')
+# ============================================================
+# Compute correlations
+# ============================================================
+activation_data = pd.concat([pd.read_csv(f) for f in ACTIVATION_CSV_FILES], ignore_index=True)
+bias_data = pd.read_csv(BIAS_CSV)
+merged_data = pd.merge(activation_data, bias_data, on="model_name")
 
-# Merge activation data with bias data on model_name
-merged_data = pd.merge(activation_data, bias_data, on='model_name')
-
-# Prepare an empty list to store results
 results = []
+grouped = merged_data.groupby(["neuron_id", "layer"])
 
-# Group by neuron_id and layer
-grouped = merged_data.groupby(['neuron_id', 'layer'])
-
-# Iterate through each group and calculate Pearson correlation
 for (neuron_id, layer), group in grouped:
-    # Calculate Pearson correlation between activation and bias
-    correlation, p_value = pearsonr(group['activation'], group['bias'])
-    
-    # Append the result to the list
-    results.append({'neuron_id': neuron_id, 'layer': layer, 'pearson_correlation': correlation, 'significance_level': p_value})
+    correlation, p_value = pearsonr(group["activation"], group["bias"])
+    results.append({
+        "neuron_id": neuron_id,
+        "layer": layer,
+        "pearson_correlation": correlation,
+        "significance_level": p_value,
+    })
 
-# Create a DataFrame from the results
 results_df = pd.DataFrame(results)
-
-# Save the results to a new CSV file
-results_df.to_csv('/kaggle/working/neuron_bias_correlation.csv', index=False)
-
-print("Correlation calculation completed and results saved to 'neuron_bias_correlation.csv'")
+results_df.to_csv(OUTPUT_CSV, index=False)
+print(f"Pearson correlations saved to {OUTPUT_CSV}")

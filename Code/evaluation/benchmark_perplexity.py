@@ -1,63 +1,65 @@
-# Perplexity with repetition
+"""
+Compute GPT-2 perplexity on generated articles across generations.
+
+Paper reference: Appendix E (Average Perplexity Across Generations)
+"""
 
 import pandas as pd
 import torch
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-import numpy as np
-import re
+
+# ============================================================
+# Configuration
+# ============================================================
+START_GEN = 0
+END_GEN = 11
+GENERATION_PATHS = {
+    # Map generation index to file path. Adjust paths to your environment.
+    # 0: "synthetic_data/DD0.txt",
+    # 1: "synthetic_data/DD1.txt",
+    # ...
+}
+OUTPUT_CSV = "perplexity.csv"
+
+# ============================================================
+# Perplexity computation
+# ============================================================
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+model = GPT2LMHeadModel.from_pretrained("gpt2")
+model.to(device)
+model.eval()
 
 
-
-# Function to compute perplexity for entire articles
-def compute_perplexities_whole(model, tokenizer, texts, device=None):
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+def compute_perplexities(texts):
+    """Compute perplexity for a list of article texts."""
     perplexities = []
-
     for text in tqdm(texts, desc="Computing perplexity"):
-        encodings = tokenizer(text, return_tensors='pt', truncation=True, max_length=model.config.n_positions)
+        encodings = tokenizer(text, return_tensors="pt", truncation=True, max_length=model.config.n_positions)
         input_ids = encodings.input_ids.to(device)
-
         with torch.no_grad():
             outputs = model(input_ids, labels=input_ids)
             loss = outputs.loss.item()
             perplexity = torch.exp(torch.tensor(loss)).item()
             perplexities.append(perplexity)
-
     return perplexities
 
-# Setup your device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Initialize model and tokenizer
-model_name = 'gpt2'
-tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-model = GPT2LMHeadModel.from_pretrained(model_name)
-
-# Main analysis loop
+# ============================================================
+# Main loop
+# ============================================================
 results = pd.DataFrame()
 
-for i in range(0, 12):  # Assuming 8 generations
-    path = f'/kaggle/input/experiment1-center-9-10/D{i}.txt'  # Update path as necessary
-    with open(path, 'r', encoding='utf-8') as file:
+for i in range(START_GEN, END_GEN + 1):
+    path = GENERATION_PATHS.get(i, f"synthetic_data/DD{i}.txt")
+    with open(path, "r", encoding="utf-8") as file:
         content = file.read()
+    articles = [a.strip() for a in content.split("\n\n") if a.strip()]
 
-    # Split the content into articles
-    articles = content.split('\n\n')
-    articles = [article.strip() for article in articles if article.strip()]
-    
-    # Compute perplexities for each article
-    perplexities = compute_perplexities_whole(model, tokenizer, articles, device)
-
-    # Store the results in a DataFrame
-    gen_results = pd.DataFrame({
-        'Generation': [i] * len(perplexities),
-        'Perplexity': perplexities
-    })
+    perplexities = compute_perplexities(articles)
+    gen_results = pd.DataFrame({"Generation": [i] * len(perplexities), "Perplexity": perplexities})
     results = pd.concat([results, gen_results], ignore_index=True)
-    
-    # Saving the DataFrame to a CSV file
-results.to_csv('perplexity_with_repetition.csv', index=False)
+
+results.to_csv(OUTPUT_CSV, index=False)
+print(f"Saved perplexity scores to {OUTPUT_CSV}")

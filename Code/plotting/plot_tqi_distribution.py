@@ -1,38 +1,39 @@
+"""
+Figure 8: Distribution of Text Quality Index across generations (histogram).
+
+Paper reference: Appendix D, Figure 8
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-plt.rcParams.update({'font.size': 14})
+plt.rcParams.update({"font.size": 14})
 
-# Load the DataFrame from a CSV file
-file_path = '/kaggle/input/dd-gibberish/DD.gibberish_levels.csv'  # Replace with the path to your CSV file
-results = pd.read_csv(file_path)
+# ============================================================
+# Configuration
+# ============================================================
+INPUT_CSV = "../Data/Bias_Performance_and_Generation_Quality/Synthetic_Generation_Quality.csv"
+SELECTED_GENERATIONS = [1, 3, 5, 7, 9, 11]     # Generation 0, 2, 4, 6, 8, 10 in paper numbering
+OUTPUT_FILE = "distribution_text_quality.png"
 
-# Grouping data by generation
-grouped_perplexities = results.groupby('Generation')['GibberishLevel'].apply(list)
+# ============================================================
+# Plot
+# ============================================================
+results = pd.read_csv(INPUT_CSV)
+grouped = results.groupby("Generation")["GibberishLevel"].apply(list)
 
-# Specify the generations you want to include in the plot
-selected_generations = [1, 3, 5, 7, 9, 11]
+plt.figure(figsize=(12, 6))
+colors = plt.get_cmap("viridis")(np.linspace(0, 1, len(SELECTED_GENERATIONS)))
 
-# Plotting the histogram
-plt.figure(figsize=(12, 6))  # Sets up the figure size
+for idx, generation in enumerate(SELECTED_GENERATIONS):
+    if generation in grouped:
+        plt.hist(grouped[generation], bins=100, alpha=0.75, color=colors[idx],
+                 label=f"Generation {generation - 1}")     # CSV gen 1 = paper gen 0
 
-# Using a colormap
-color_map = plt.get_cmap('viridis')  # Using 'viridis' for a visually appealing set of colors
-colors = color_map(np.linspace(0, 1, len(selected_generations)))  # Generates colors for each generation
-
-# Plotting each generation's perplexity histogram on the same figure
-for idx, generation in enumerate(selected_generations):
-    if generation in grouped_perplexities:
-        # Ensuring there's data to plot for each selected generation
-        perplexities = grouped_perplexities[generation]
-        plt.hist(perplexities, bins=100, alpha=0.75, color=colors[idx], label=f'Generation {generation - 1}')  # Label as Generation i-1
-
-plt.xlabel('Text Quality Index')  # Sets the label for the x-axis
-plt.ylabel('Frequency')  # Sets the label for the y-axis
-plt.title('Distribution of Text Quality Index Across Generations')  # Sets the title of the histogram
-plt.legend()  # Adds a legend to distinguish the generations
-
-plt.savefig('distribution_text_quality.png', dpi=300, bbox_inches='tight')  # Saves the figure
-
+plt.xlabel("Text Quality Index")
+plt.ylabel("Frequency")
+plt.title("Distribution of Text Quality Index Across Generations")
+plt.legend()
+plt.savefig(OUTPUT_FILE, dpi=300, bbox_inches="tight")
 plt.show()
